@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Balloon Race</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #000; /* Base color for the Space Adventure theme */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100vh;
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        border: 3px solid #000;
+        background-color: #000; /* Dark background for space */
+      }
+      #controls {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+      #speedControl {
+        margin-top: 20px;
+      }
+      #highScores {
+        margin-top: 20px;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="controls">
+      <button id="pauseButton">Pause</button>
+      <button id="resumeButton" style="display: none">Resume</button>
+      <button id="restartButton">Restart</button>
+      <button id="quitButton">Quit</button>
+    </div>
+    <input type="range" id="speedControl" min="0" max="10" step="1" value="0" />
+    <label for="speedControl">Speed: <span id="speedValue">0</span></label>
+    <div id="highScores">
+      <p>Current Score: <span id="currentScore">0</span></p>
+      <p>High Score: <span id="highScore">0</span></p>
+    </div>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const balloonRadius = 20;
+      const minObstacleWidth = 50; // Minimum obstacle width
+      const minObstacleGap = 60; // Gap between obstacles always larger than balloon diameter
+      let balloonY = canvas.height / 2;
+      let balloonX = canvas.width / 2;
+      let gravity = 0.1;
+      let lift = -5;
+      let velocity = 0;
+      let obstacles = [];
+      let level = 1;
+      let levelUpTime = 10000;
+      let lastLevelUp = Date.now();
+      let balloonAlpha = 1;
+      let balloonFadeDirection = -1;
+      let speedMultiplier = 1;
+      let isPaused = false;
+      let gameInterval;
+      let currentScore = 0;
+      let highScore = localStorage.getItem("highScore") || 0;
+
+      function drawBalloon() {
+        ctx.globalAlpha = balloonAlpha;
+        ctx.beginPath();
+        ctx.arc(balloonX, balloonY, balloonRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "#FF69B4";
+        ctx.fill();
+        ctx.closePath();
+        ctx.globalAlpha = 1;
+      }
+
+      function generateObstacle() {
+        const obstacleTypes = ["bouncyPad", "windGust"];
+        const obstacleType =
+          obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+        let obstacle = {
+          x: canvas.width,
+          width: Math.random() * (canvas.width / 4) + 50,
+          height: Math.random() * (canvas.height / 4) + 20,
+          gap: minObstacleGap + Math.random() * 50,
+          type: obstacleType,
+          speed: Math.random() * 2 + 1, // Random speed
+        };
+        obstacles.push(obstacle);
+      }
+
+      function drawObstacles() {
+        for (let i = 0; i < obstacles.length; i++) {
+          let obs = obstacles[i];
+          if (obs.type === "bouncyPad") {
+            ctx.fillStyle = "#FF5722"; // Orange for bouncy pads
+            ctx.fillRect(obs.x, canvas.height - 30, obs.width, 10);
+          } else if (obs.type === "windGust") {
+            ctx.fillStyle = "#00BCD4"; // Cyan for wind gusts
+            ctx.beginPath();
+            ctx.arc(
+              obs.x + obs.width / 2,
+              canvas.height - obs.height / 2,
+              obs.width / 2,
+              0,
+              Math.PI * 2
+            );
+            ctx.fill();
+          }
+        }
+      }
+
+      function updateObstacles() {
+        for (let i = 0; i < obstacles.length; i++) {
+          let obs = obstacles[i];
+          obs.x -= 3 * speedMultiplier; // Apply speed multiplier
+
+          // Remove off-screen obstacles
+          if (obs.x + obs.width < 0) {
+            obstacles.splice(i, 1);
+            i--;
+          }
+
+          // Collision detection
+          if (
+            balloonX + balloonRadius > obs.x &&
+            balloonX - balloonRadius < obs.x + obs.width
+          ) {
+            if (
+              balloonY + balloonRadius > canvas.height - 30 &&
+              obs.type === "bouncyPad"
+            ) {
+              velocity = lift * speedMultiplier; // Bounce off bouncy pad
+              currentScore += 10; // Increment score
+            } else if (
+              balloonY + balloonRadius > canvas.height - obs.height &&
+              obs.type === "windGust"
+            ) {
+              // Push balloon sideways with wind gusts
+              balloonX +=
+                Math.random() * 5 * speedMultiplier - 2.5 * speedMultiplier;
+            }
+          }
+        }
+
+        // Generate new obstacles
+        if (Math.random() < 0.02) {
+          generateObstacle();
+        }
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw background for Space Adventure
+        ctx.fillStyle = "#000"; // Space black
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff"; // Stars
+        for (let i = 0; i < 100; i++) {
+          ctx.beginPath();
+          ctx.arc(
+            Math.random() * canvas.width,
+            Math.random() * canvas.height,
+            Math.random() * 2,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
+        drawBalloon();
+        drawObstacles();
+        updateObstacles();
+
+        let currentTime = Date.now();
+        if (currentTime - lastLevelUp > levelUpTime) {
+          level++;
+          gravity += 0.2;
+          levelUpTime *= 1.5;
+          lastLevelUp = currentTime;
+        }
+
+        velocity += gravity * speedMultiplier;
+        balloonY += velocity;
+
+        if (
+          balloonY + balloonRadius > canvas.height ||
+          balloonY - balloonRadius < 0
+        ) {
+          balloonAlpha += balloonFadeDirection * 0.05;
+          if (balloonAlpha <= 0) {
+            balloonAlpha = 0;
+            balloonFadeDirection = 1;
+            balloonY = canvas.height / 2;
+            velocity = 0;
+            // Check and update high score
+            if (currentScore > highScore) {
+              highScore = currentScore;
+              localStorage.setItem("highScore", highScore);
+            }
+            currentScore = 0;
+          }
+          if (balloonAlpha >= 1) {
+            balloonAlpha = 1;
+            balloonFadeDirection = -1;
+          }
+        } else {
+          balloonAlpha = 1;
+        }
+
+        document.getElementById("currentScore").textContent = currentScore;
+        document.getElementById("highScore").textContent = highScore;
+
+        if (!isPaused) {
+          requestAnimationFrame(draw);
+        }
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.code === "Space") {
+          velocity = lift * speedMultiplier;
+        }
+      });
+
+      canvas.addEventListener("touchstart", function (event) {
+        event.preventDefault(); // Prevents scrolling on mobile
+        velocity = lift * speedMultiplier;
+      });
+
+      canvas.addEventListener("click", function () {
+        velocity = lift * speedMultiplier;
+      });
+
+      const speedControl = document.getElementById("speedControl");
+      const speedValueDisplay = document.getElementById("speedValue");
+
+      speedControl.addEventListener("input", function () {
+        speedMultiplier = parseFloat(speedControl.value);
+        speedValueDisplay.textContent = speedControl.value;
+      });
+
+      function startGame() {
+        isPaused = false;
+        currentScore = 0;
+        draw();
+        document.getElementById("pauseButton").style.display = "block";
+        document.getElementById("resumeButton").style.display = "none";
+      }
+
+      function pauseGame() {
+        isPaused = true;
+        document.getElementById("pauseButton").style.display = "none";
+        document.getElementById("resumeButton").style.display = "block";
+      }
+
+      function resumeGame() {
+        if (isPaused) {
+          isPaused = false;
+          draw();
+          document.getElementById("pauseButton").style.display = "block";
+          document.getElementById("resumeButton").style.display = "none";
+        }
+      }
+
+      function restartGame() {
+        obstacles = [];
+        balloonY = canvas.height / 2;
+        balloonX = canvas.width / 2;
+        velocity = 0;
+        currentScore = 0;
+        startGame();
+      }
+
+      function quitGame() {
+        if (!isPaused) {
+          pauseGame();
+        }
+        if (confirm("Are you sure you want to quit?")) {
+          obstacles = [];
+          balloonY = canvas.height / 2;
+          balloonX = canvas.width / 2;
+          velocity = 0;
+          document.getElementById("pauseButton").style.display = "none";
+          document.getElementById("resumeButton").style.display = "none";
+        }
+      }
+
+      document
+        .getElementById("pauseButton")
+        .addEventListener("click", pauseGame);
+      document
+        .getElementById("resumeButton")
+        .addEventListener("click", resumeGame);
+      document
+        .getElementById("restartButton")
+        .addEventListener("click", restartGame);
+      document.getElementById("quitButton").addEventListener("click", quitGame);
+
+      startGame(); // Start the game initially
+    </script>
+  </body>
+</html>
